@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>NotCord</title>
+		<script src="https://cdn.tailwindcss.com"></script>
+	</head>
+	<body class="bg-gray-900 text-white h-screen overflow-hidden">
+		<div class="flex flex-col h-screen">
+			<!-- Header -->
+			<div class="bg-gray-800 p-4 shadow-lg">
+				<div class="flex justify-between items-center">
+					<div>
+						<h1 class="text-2xl font-bold">NotCord</h1>
+						<p class="text-sm text-gray-400" id="status">
+							Connecting...
+						</p>
+					</div>
+					<div class="text-right">
+						<div class="text-sm text-gray-400">Online</div>
+						<div
+							class="text-2xl font-bold text-green-400"
+							id="userCount"
+						>
+							0
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Messages Area -->
+			<div class="flex-1 overflow-y-auto p-4 space-y-2" id="messages">
+				<!-- Messages will appear here -->
+			</div>
+
+			<!-- Input Area -->
+			<div class="bg-gray-800 p-4">
+				<div class="flex space-x-2">
+					<input
+						type="text"
+						id="messageInput"
+						placeholder="Type a message..."
+						class="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+						autocomplete="off"
+					/>
+					<button
+						id="sendButton"
+						class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold transition-colors"
+					>
+						Send
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Username Modal -->
+		<div
+			id="usernameModal"
+			class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+		>
+			<div
+				class="bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full mx-4"
+			>
+				<h2 class="text-2xl font-bold mb-4">Welcome to NotCord</h2>
+				<p class="text-gray-400 mb-4">
+					Choose a username to get started
+				</p>
+				<input
+					type="text"
+					id="usernameInput"
+					placeholder="Enter your username"
+					class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+					maxlength="20"
+				/>
+				<button
+					id="joinButton"
+					class="w-full bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold transition-colors"
+				>
+					Join Chat
+				</button>
+			</div>
+		</div>
+
+		<script>
+			let ws;
+			let username = "";
+
+			const messagesDiv = document.getElementById("messages");
+			const messageInput = document.getElementById("messageInput");
+			const sendButton = document.getElementById("sendButton");
+			const statusElement = document.getElementById("status");
+			const userCountElement = document.getElementById("userCount");
+			const usernameModal = document.getElementById("usernameModal");
+			const usernameInput = document.getElementById("usernameInput");
+			const joinButton = document.getElementById("joinButton");
+
+			// Disable input initially
+			messageInput.disabled = true;
+			sendButton.disabled = true;
+
+			// Handle username submission
+			joinButton.addEventListener("click", () => {
+				const enteredUsername = usernameInput.value.trim();
+				if (enteredUsername) {
+					username = enteredUsername;
+					usernameModal.style.display = "none";
+					connectWebSocket();
+				}
+			});
+
+			usernameInput.addEventListener("keypress", (e) => {
+				if (e.key === "Enter") {
+					joinButton.click();
+				}
+			});
+
+			function connectWebSocket() {
+				const protocol =
+					window.location.protocol === "https:" ? "wss:" : "ws:";
+				const wsUrl = `${protocol}//${window.location.host}/ws?username=${encodeURIComponent(username)}`;
+
+				console.log("Connecting to WebSocket:", wsUrl);
+				ws = new WebSocket(wsUrl);
+
+				ws.onopen = () => {
+					console.log("WebSocket connected!");
+					statusElement.textContent = "Connected";
+					statusElement.classList.remove("text-red-400");
+					statusElement.classList.add("text-green-400");
+					messageInput.disabled = false;
+					sendButton.disabled = false;
+					messageInput.focus();
+				};
+
+				ws.onclose = () => {
+					console.log("WebSocket disconnected");
+					statusElement.textContent =
+						"Disconnected - Reconnecting...";
+					statusElement.classList.remove("text-green-400");
+					statusElement.classList.add("text-red-400");
+					messageInput.disabled = true;
+					sendButton.disabled = true;
+
+					// Attempt to reconnect after 3 seconds
+					setTimeout(connectWebSocket, 3000);
+				};
+
+				ws.onerror = (error) => {
+					console.error("WebSocket error:", error);
+					statusElement.textContent = "Connection error";
+					statusElement.classList.add("text-red-400");
+				};
+
+				ws.onmessage = (event) => {
+					console.log("=== RAW MESSAGE RECEIVED ===");
+					console.log("Raw data:", event.data);
+					console.log("Data type:", typeof event.data);
+
+					try {
+						const message = JSON.parse(event.data);
+						console.log("Parsed message object:", message);
+						console.log("Message type:", message.type);
+						console.log("Message username:", message.username);
+						console.log("Message content:", message.content);
+						console.log("About to call displayMessage...");
+						displayMessage(message);
+						console.log("displayMessage completed");
+					} catch (error) {
+						console.error("ERROR parsing message:", error);
+						console.error("Failed data:", event.data);
+					}
+				};
+			}
+
+			function displayMessage(message) {
+				console.log("=== DISPLAY MESSAGE CALLED ===");
+				console.log("Message:", JSON.stringify(message, null, 2));
+
+				// Handle user count updates
+				if (message.type === "user_count") {
+					console.log("Updating user count to:", message.user_count);
+					if (userCountElement) {
+						userCountElement.textContent = message.user_count;
+						console.log("✓ User count updated in UI");
+					} else {
+						console.error("✗ userCountElement not found!");
+					}
+					return;
+				}
+
+				// Verify messagesDiv exists
+				if (!messagesDiv) {
+					console.error("✗ CRITICAL: messagesDiv not found!");
+					return;
+				}
+
+				console.log("Creating message element for type:", message.type);
+				const messageEl = document.createElement("div");
+				messageEl.style.marginBottom = "8px"; // Add explicit styling
+
+				if (message.type === "join" || message.type === "leave") {
+					console.log("Creating join/leave message");
+					messageEl.className =
+						"text-center text-gray-400 text-sm py-1";
+					messageEl.textContent = `${message.username} ${message.content}`;
+					messageEl.style.textAlign = "center";
+					messageEl.style.color = "#9CA3AF";
+					messageEl.style.fontSize = "14px";
+					messageEl.style.padding = "4px 0";
+				} else {
+					console.log("Creating regular message");
+					const isOwnMessage = message.username === username;
+					console.log(
+						`From: ${message.username}, IsOwn: ${isOwnMessage}, Current user: ${username}`,
+					);
+
+					messageEl.className = `flex ${isOwnMessage ? "justify-end" : "justify-start"}`;
+					messageEl.style.display = "flex";
+					messageEl.style.justifyContent = isOwnMessage
+						? "flex-end"
+						: "flex-start";
+
+					const bubble = document.createElement("div");
+					bubble.className = `max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+						isOwnMessage ? "bg-blue-600" : "bg-gray-700"
+					}`;
+					bubble.style.maxWidth = "400px";
+					bubble.style.padding = "8px 12px";
+					bubble.style.borderRadius = "8px";
+					bubble.style.backgroundColor = isOwnMessage
+						? "#2563EB"
+						: "#374151";
+
+					if (!isOwnMessage) {
+						const header = document.createElement("div");
+						header.className = "text-xs text-gray-300 mb-1";
+						header.textContent = message.username;
+						header.style.fontSize = "12px";
+						header.style.color = "#D1D5DB";
+						header.style.marginBottom = "4px";
+						bubble.appendChild(header);
+					}
+
+					const content = document.createElement("div");
+					content.className = "break-words";
+					content.textContent = message.content;
+					content.style.wordBreak = "break-word";
+					content.style.color = "white";
+					bubble.appendChild(content);
+
+					const time = document.createElement("div");
+					time.className = "text-xs text-gray-400 mt-1";
+					const timestamp = new Date(message.timestamp);
+					time.textContent = timestamp.toLocaleTimeString();
+					time.style.fontSize = "11px";
+					time.style.color = "#9CA3AF";
+					time.style.marginTop = "4px";
+					bubble.appendChild(time);
+
+					messageEl.appendChild(bubble);
+				}
+
+				console.log("Appending to messagesDiv...");
+				messagesDiv.appendChild(messageEl);
+				console.log(
+					"✓ Message appended. Total messages:",
+					messagesDiv.children.length,
+				);
+
+				// Force scroll
+				messagesDiv.scrollTop = messagesDiv.scrollHeight;
+				console.log("✓ Scrolled to bottom");
+				console.log("=== MESSAGE DISPLAY COMPLETE ===");
+			}
+
+			function sendMessage() {
+				const content = messageInput.value.trim();
+
+				if (!content) {
+					console.log("Empty message, not sending");
+					return;
+				}
+
+				if (!ws) {
+					console.error("WebSocket not initialized");
+					return;
+				}
+
+				if (ws.readyState !== WebSocket.OPEN) {
+					console.error(
+						"WebSocket not connected. State:",
+						ws.readyState,
+					);
+					statusElement.textContent = "Not connected";
+					statusElement.classList.add("text-red-400");
+					return;
+				}
+
+				const message = {
+					content: content,
+				};
+
+				console.log("Sending message:", message);
+				ws.send(JSON.stringify(message));
+				messageInput.value = "";
+				messageInput.focus();
+			}
+
+			sendButton.addEventListener("click", sendMessage);
+			messageInput.addEventListener("keypress", (e) => {
+				if (e.key === "Enter") {
+					sendMessage();
+				}
+			});
+
+			// Focus username input on load
+			usernameInput.focus();
+		</script>
+	</body>
+</html>

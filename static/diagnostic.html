@@ -1,0 +1,225 @@
+<!doctype html>
+<html>
+	<head>
+		<title>WebSocket Diagnostic</title>
+		<style>
+			body {
+				font-family: monospace;
+				padding: 20px;
+				background: #1a1a1a;
+				color: #00ff00;
+			}
+			.log {
+				background: #000;
+				padding: 10px;
+				margin: 10px 0;
+				border: 1px solid #00ff00;
+				max-height: 400px;
+				overflow-y: auto;
+			}
+			input,
+			button {
+				padding: 10px;
+				margin: 5px;
+				font-size: 16px;
+			}
+			.success {
+				color: #00ff00;
+			}
+			.error {
+				color: #ff0000;
+			}
+			.info {
+				color: #00aaff;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>WebSocket Diagnostic Tool</h1>
+
+		<div>
+			<input
+				type="text"
+				id="username"
+				placeholder="Username"
+				value="TestUser"
+			/>
+			<button onclick="connect()">Connect</button>
+			<button onclick="disconnect()">Disconnect</button>
+		</div>
+
+		<div>
+			<input type="text" id="message" placeholder="Type a message" />
+			<button onclick="send()">Send</button>
+		</div>
+
+		<h2>Connection Log:</h2>
+		<div class="log" id="log"></div>
+
+		<h2>Messages Received:</h2>
+		<div class="log" id="messages"></div>
+
+		<h2>Chat Display (Visual Test):</h2>
+		<div class="log" id="chat"></div>
+
+		<script>
+			let ws = null;
+			let username = "";
+
+			function log(message, type = "info") {
+				const logDiv = document.getElementById("log");
+				const entry = document.createElement("div");
+				entry.className = type;
+				entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+				logDiv.appendChild(entry);
+				logDiv.scrollTop = logDiv.scrollHeight;
+				console.log(message);
+			}
+
+			function logMessage(message) {
+				const messagesDiv = document.getElementById("messages");
+				const entry = document.createElement("div");
+				entry.className = "success";
+				entry.textContent = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(message)}`;
+				messagesDiv.appendChild(entry);
+				messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+				// Also display in chat-like format
+				displayInChat(message);
+			}
+
+			function displayInChat(message) {
+				const chatDiv = document.getElementById("chat");
+				const chatEntry = document.createElement("div");
+				chatEntry.style.marginBottom = "10px";
+				chatEntry.style.padding = "5px";
+				chatEntry.style.borderLeft = "3px solid #00ff00";
+
+				if (message.type === "join" || message.type === "leave") {
+					chatEntry.innerHTML = `<span style="color: #888;">${message.username} ${message.content}</span>`;
+				} else if (message.type === "user_count") {
+					chatEntry.innerHTML = `<span style="color: #00aaff;">👥 Online: ${message.user_count}</span>`;
+				} else if (message.type === "message") {
+					const isOwn = message.username === username;
+					const color = isOwn ? "#00ff00" : "#ffaa00";
+					chatEntry.innerHTML = `
+                    <div style="color: ${color}; font-weight: bold;">${message.username}:</div>
+                    <div style="color: white; margin-left: 10px;">${message.content}</div>
+                    <div style="color: #666; font-size: 10px;">${new Date(message.timestamp).toLocaleTimeString()}</div>
+                `;
+				}
+
+				chatDiv.appendChild(chatEntry);
+				chatDiv.scrollTop = chatDiv.scrollHeight;
+			}
+
+			function connect() {
+				username =
+					document.getElementById("username").value || "TestUser";
+				const wsUrl = `ws://${window.location.host}/ws?username=${encodeURIComponent(username)}`;
+
+				log(`Attempting to connect to: ${wsUrl}`, "info");
+
+				try {
+					ws = new WebSocket(wsUrl);
+
+					ws.onopen = () => {
+						log("✓ WebSocket CONNECTED!", "success");
+						log(
+							`ReadyState: ${ws.readyState} (1 = OPEN)`,
+							"success",
+						);
+					};
+
+					ws.onmessage = (event) => {
+						log(`✓ MESSAGE RECEIVED: ${event.data}`, "success");
+						try {
+							const msg = JSON.parse(event.data);
+							logMessage(msg);
+						} catch (e) {
+							log(
+								`✗ Failed to parse message: ${e.message}`,
+								"error",
+							);
+						}
+					};
+
+					ws.onerror = (error) => {
+						log(`✗ WebSocket ERROR: ${error}`, "error");
+						console.error("WebSocket error:", error);
+					};
+
+					ws.onclose = (event) => {
+						log(
+							`✗ WebSocket CLOSED. Code: ${event.code}, Reason: ${event.reason}`,
+							"error",
+						);
+					};
+				} catch (error) {
+					log(
+						`✗ Exception creating WebSocket: ${error.message}`,
+						"error",
+					);
+				}
+			}
+
+			function disconnect() {
+				if (ws) {
+					log("Closing WebSocket...", "info");
+					ws.close();
+					ws = null;
+				} else {
+					log("No active connection", "info");
+				}
+			}
+
+			function send() {
+				const messageInput = document.getElementById("message");
+				const content = messageInput.value.trim();
+
+				if (!content) {
+					log("✗ Cannot send empty message", "error");
+					return;
+				}
+
+				if (!ws) {
+					log("✗ Not connected!", "error");
+					return;
+				}
+
+				if (ws.readyState !== WebSocket.OPEN) {
+					log(
+						`✗ WebSocket not open. State: ${ws.readyState}`,
+						"error",
+					);
+					return;
+				}
+
+				const message = { content: content };
+				const json = JSON.stringify(message);
+
+				log(`→ Sending: ${json}`, "info");
+
+				try {
+					ws.send(json);
+					log("✓ Message sent successfully", "success");
+					messageInput.value = "";
+				} catch (error) {
+					log(`✗ Error sending message: ${error.message}`, "error");
+				}
+			}
+
+			document
+				.getElementById("message")
+				.addEventListener("keypress", (e) => {
+					if (e.key === "Enter") send();
+				});
+
+			// Auto-connect on load
+			window.onload = () => {
+				log("Diagnostic tool loaded", "info");
+				log("Ready to test WebSocket connection", "info");
+			};
+		</script>
+	</body>
+</html>

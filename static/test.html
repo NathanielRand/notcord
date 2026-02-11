@@ -1,0 +1,183 @@
+<!doctype html>
+<html>
+	<head>
+		<title>Basic WebSocket Test</title>
+		<style>
+			body {
+				font-family: Arial;
+				padding: 20px;
+				background: #1a1a1a;
+				color: white;
+			}
+			#chat {
+				border: 2px solid #00ff00;
+				height: 300px;
+				overflow-y: auto;
+				padding: 10px;
+				margin: 10px 0;
+				background: #000;
+			}
+			.msg {
+				margin: 5px 0;
+				padding: 5px;
+				background: #333;
+			}
+			input,
+			button {
+				padding: 10px;
+				font-size: 16px;
+				margin: 5px;
+			}
+			.log {
+				background: #222;
+				padding: 10px;
+				margin: 10px 0;
+				font-family: monospace;
+				font-size: 12px;
+				max-height: 200px;
+				overflow-y: auto;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Basic WebSocket Test</h1>
+
+		<div>
+			<input
+				type="text"
+				id="username"
+				placeholder="Username"
+				value="User1"
+			/>
+			<button onclick="connect()">Connect</button>
+		</div>
+
+		<h3>
+			Status: <span id="status" style="color: red">DISCONNECTED</span>
+		</h3>
+
+		<h3>Chat Messages:</h3>
+		<div id="chat"></div>
+
+		<div>
+			<input
+				type="text"
+				id="msgInput"
+				placeholder="Type message..."
+				style="width: 300px"
+			/>
+			<button onclick="sendMsg()">Send</button>
+		</div>
+
+		<h3>Debug Log:</h3>
+		<div class="log" id="log"></div>
+
+		<script>
+			let ws = null;
+			let myUsername = "";
+
+			function log(msg) {
+				const d = new Date();
+				const time = d.toLocaleTimeString();
+				document.getElementById("log").innerHTML +=
+					`[${time}] ${msg}<br>`;
+				console.log(msg);
+			}
+
+			function addChatMsg(username, content) {
+				const chatDiv = document.getElementById("chat");
+				const msgDiv = document.createElement("div");
+				msgDiv.className = "msg";
+				msgDiv.innerHTML = `<b>${username}:</b> ${content}`;
+				chatDiv.appendChild(msgDiv);
+				chatDiv.scrollTop = chatDiv.scrollHeight;
+			}
+
+			function connect() {
+				myUsername =
+					document.getElementById("username").value || "User1";
+				const url = `ws://localhost:8080/ws?username=${myUsername}`;
+
+				log(`STEP 1: Attempting to connect to ${url}`);
+
+				ws = new WebSocket(url);
+
+				ws.onopen = function () {
+					log("STEP 2: ✓ WebSocket CONNECTED!");
+					document.getElementById("status").textContent = "CONNECTED";
+					document.getElementById("status").style.color = "lime";
+				};
+
+				ws.onmessage = function (event) {
+					log(`STEP 5: ✓ Received from server: ${event.data}`);
+
+					try {
+						const msg = JSON.parse(event.data);
+						log(
+							`STEP 6: Parsed - Type: ${msg.type}, From: ${msg.username}, Content: ${msg.content}`,
+						);
+
+						if (msg.type === "message") {
+							log(`STEP 7: Adding message to chat UI`);
+							addChatMsg(msg.username, msg.content);
+						} else if (msg.type === "join") {
+							addChatMsg("SYSTEM", `${msg.username} joined`);
+						}
+					} catch (e) {
+						log(`ERROR parsing: ${e}`);
+					}
+				};
+
+				ws.onerror = function (err) {
+					log(`ERROR: WebSocket error`);
+					console.error(err);
+				};
+
+				ws.onclose = function () {
+					log("WebSocket CLOSED");
+					document.getElementById("status").textContent =
+						"DISCONNECTED";
+					document.getElementById("status").style.color = "red";
+				};
+			}
+
+			function sendMsg() {
+				const input = document.getElementById("msgInput");
+				const content = input.value.trim();
+
+				if (!content) {
+					log("ERROR: Cannot send empty message");
+					return;
+				}
+
+				if (!ws || ws.readyState !== WebSocket.OPEN) {
+					log("ERROR: Not connected!");
+					alert("Not connected! Click Connect first.");
+					return;
+				}
+
+				log(`STEP 3: Preparing to send message: "${content}"`);
+
+				const msgObj = {
+					content: content,
+				};
+
+				const json = JSON.stringify(msgObj);
+				log(`STEP 4: Sending JSON to server: ${json}`);
+
+				ws.send(json);
+				log("STEP 4: ✓ Message sent to server via WebSocket");
+
+				input.value = "";
+			}
+
+			document
+				.getElementById("msgInput")
+				.addEventListener("keypress", function (e) {
+					if (e.key === "Enter") sendMsg();
+				});
+
+			log("Page loaded. Click Connect to start.");
+		</script>
+	</body>
+</html>
