@@ -155,4 +155,4 @@ log.Fatal(http.ListenAndServe(":8080", nil))
 
 ## License
 
-MIT License - Feel free to use and modify!
+Apache License - (will change later)
